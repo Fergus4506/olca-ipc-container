@@ -1,0 +1,7 @@
+1. docker build -t olca-ipc-server . (將檔案建立)
+2. docker run   -p 3000:8080   -v {絕對路徑指向這個資料夾的TestPlatForm}:/app/data   --rm -d olca-ipc-server   -db mainTestDatabase
+3. node FindTest.js (查看是否有正常掛載)
+
+也可去原始docker 查看 https://github.com/GreenDelta/olca-ipc-container
+
+ps: 之後要掛載新的Database 只要解壓縮zolca到TestPlatForm/databases 就可以了

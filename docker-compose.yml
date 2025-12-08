@@ -1,0 +1,34 @@
+version: '3.8'
+services:
+  olca:
+    build: .
+    image: olca-ipc-server
+    container_name: olca-ipc
+    # 將 openLCA 資料夾掛到容器（範例），請依實際路徑調整
+    # 把整個 TestPlatForm 掛到 /app/data，容器內會看到 /app/data/databases/mainTestDatabase
+    volumes:
+      - ./TestPlatForm:/app/data
+    # 對外將容器的 8080 對應到主機 5011（與原始 run 範例一致）
+    ports:
+      - "5011:8080"
+    # 建議自動重啟，並指定要啟用的資料庫（與指令範例一致）
+    command: -db mainTestDatabase
+    restart: unless-stopped
+
+  flask:
+    build: ./flask
+    container_name: olca-flask
+    ports:
+      - "5010:5000" # 對外僅開放 Flask
+    depends_on:
+      - olca
+    environment:
+      # 讓 Flask 連到內部的 olca 服務
+      OLCA_IPC_HOST: olca
+      OLCA_IPC_PORT: "8080"
+      IPC_CONNECT_RETRIES: "20"
+      IPC_CONNECT_DELAY: "1.0"
+    # 建議以 volume 掛載正在開發的 Flask 程式碼，方便修改立即生效
+    volumes:
+      - ./flask/my_flask1.py:/app/my_flask1.py:ro
+    restart: unless-stopped
