@@ -72,8 +72,8 @@ def calculate_openlca(distance, factor, load, amount):
         impact_method=method,
         parameters=[
             o.ParameterRedef(name=parameters[0].name, value=factor, context=parameters[0].context),
-            o.ParameterRedef(name=parameters[1].name, value=distance, context=parameters[1].context),
-            o.ParameterRedef(name=parameters[2].name, value=load, context=parameters[2].context),
+            o.ParameterRedef(name=parameters[1].name, value=load, context=parameters[1].context),
+            o.ParameterRedef(name=parameters[2].name, value=distance, context=parameters[2].context),
         ],
     )
 
