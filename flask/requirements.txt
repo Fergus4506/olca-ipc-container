@@ -2,3 +2,4 @@ Flask>=2.0
 gunicorn
 olca-ipc
 olca-schema
+flask-cors

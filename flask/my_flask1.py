@@ -3,8 +3,10 @@ import os
 import time
 import olca_schema as o
 import olca_ipc as ipc
+from flask_cors import CORS  # <--- 新增這個
 
 app = Flask(__name__)
+CORS(app)  # <--- 啟用 CORS，允許所有來源呼叫 (測試階段這樣做最方便)
 
 # --- 設定區域 ---
 # # 確保 Host 預設值與 docker-compose service name 一致
