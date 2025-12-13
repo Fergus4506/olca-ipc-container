@@ -1,0 +1,394 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>openLCA 碳排情境比較</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        :root {
+            --primary-color: #2c7744;
+            --secondary-color: #4a9c66;
+            --accent-color: #d4edda;
+            --bg-color: #f4f7f6;
+            --text-color: #333;
+            --danger-color: #dc3545;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            padding: 30px 20px;
+            margin: 0;
+        }
+
+        h2, h3 {
+            text-align: center;
+            color: var(--primary-color);
+        }
+
+        .main-container {
+            max-width: 1000px;
+            margin: 0 auto;
+            background: white;
+            padding: 30px;
+            border-radius: 15px;
+            box-shadow: 0 5px 25px rgba(0,0,0,0.1);
+        }
+
+        /* 比較區塊的佈局 */
+        .comparison-wrapper {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 25px;
+            margin-bottom: 30px;
+        }
+
+        .scenario-box {
+            flex: 1 1 400px; /* 每個區塊至少 400px 寬，並平均分配空間 */
+            border: 2px solid #eee;
+            padding: 25px;
+            border-radius: 12px;
+            background-color: #fafafa;
+            transition: border-color 0.3s;
+        }
+        
+        .scenario-box:focus-within {
+            border-color: var(--secondary-color);
+        }
+
+        .scenario-box h3 {
+            margin-top: 0;
+            border-bottom: 2px solid var(--accent-color);
+            padding-bottom: 10px;
+            margin-bottom: 20px;
+        }
+
+        .form-group {
+            margin-bottom: 15px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: 600;
+            font-size: 0.9em;
+            color: #555;
+        }
+
+        input {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            box-sizing: border-box;
+        }
+
+        .compare-btn-container {
+            text-align: center;
+            margin: 30px 0;
+        }
+
+        #compareBtn {
+            padding: 15px 40px;
+            background-color: var(--primary-color);
+            color: white;
+            border: none;
+            border-radius: 30px;
+            font-size: 18px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: background 0.3s, transform 0.1s;
+            box-shadow: 0 4px 15px rgba(44, 119, 68, 0.3);
+        }
+
+        #compareBtn:hover {
+            background-color: #1e5230;
+            transform: translateY(-2px);
+        }
+        
+        #compareBtn:active {
+            transform: translateY(1px);
+        }
+        
+        #compareBtn:disabled {
+            background-color: #ccc;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        /* 結果顯示區域 */
+        #resultSection {
+            display: none; /* 預設隱藏 */
+            margin-top: 40px;
+            border-top: 3px dashed #eee;
+            padding-top: 30px;
+        }
+
+        .chart-container {
+            position: relative;
+            height: 400px; /* 固定圖表高度 */
+            width: 100%;
+            margin-bottom: 30px;
+        }
+
+        #summaryBox {
+            background-color: var(--accent-color);
+            border-radius: 12px;
+            padding: 25px;
+            text-align: center;
+            font-size: 1.2em;
+        }
+        
+        .highlight-reduction {
+            color: var(--primary-color);
+            font-weight: bold;
+            font-size: 1.5em;
+        }
+
+        .highlight-increase {
+            color: var(--danger-color);
+            font-weight: bold;
+            font-size: 1.5em;
+        }
+    </style>
+</head>
+<body>
+
+<div class="main-container">
+    <h2>⚖️ 碳排情境比較分析</h2>
+    <p style="text-align: center; color: #666;">輸入兩個不同情境的參數，比較其 GWP 100 (公斤二氧化碳當量) 差異。</p>
+    
+    <div class="comparison-wrapper">
+        <div class="scenario-box" style="border-top: 4px solid var(--secondary-color);">
+            <h3>📋 情境 A (基準)</h3>
+            <div class="form-group">
+                <label for="dist_a">運輸距離 (Distance)</label>
+                <input type="number" id="dist_a" value="100" required>
+            </div>
+            <div class="form-group">
+                <label for="fact_a">係數 (Factor)</label>
+                <input type="number" id="fact_a" value="0.8" required>
+            </div>
+            <div class="form-group">
+                <label for="load_a">負載量 (Load)</label>
+                <input type="number" id="load_a" value="20" required>
+            </div>
+            <div class="form-group">
+                <label for="amt_a">數量 (Amount)</label>
+                <input type="number" id="amt_a" value="500" required>
+            </div>
+        </div>
+
+        <div class="scenario-box" style="border-top: 4px solid #3498db;">
+            <h3>📋 情境 B (對照)</h3>
+            <div class="form-group">
+                <label for="dist_b">運輸距離 (Distance)</label>
+                <input type="number" id="dist_b" value="80" required>
+            </div>
+            <div class="form-group">
+                <label for="fact_b">係數 (Factor)</label>
+                <input type="number" id="fact_b" value="0.6" required>
+            </div>
+            <div class="form-group">
+                <label for="load_b">負載量 (Load)</label>
+                <input type="number" id="load_b" value="25" required>
+            </div>
+            <div class="form-group">
+                <label for="amt_b">數量 (Amount)</label>
+                <input type="number" id="amt_b" value="500" required>
+            </div>
+        </div>
+    </div>
+
+    <div class="compare-btn-container">
+        <button id="compareBtn">🚀 開始分析比較</button>
+    </div>
+
+    <div id="resultSection">
+        <div class="chart-container">
+            <canvas id="comparisonChart"></canvas>
+        </div>
+        <div id="summaryBox">
+            </div>
+    </div>
+</div>
+
+<script>
+    // 定義 API URL
+    const API_URL = 'http://localhost:5010/calculate';
+    
+    // 用於存儲 Chart.js 實例的全域變數，以便稍後銷毀重建
+    let myChart = null;
+
+    // 輔助函式：從 API 回傳資料中提取 'IPCC 2021 GWP 100' 的數值
+    function extractGWP100(data) {
+        if (!data || data.status !== 'ok' || !data.impacts) return 0;
+        const gwpImpact = data.impacts.find(item => item.category.includes('GWP 100'));
+        return gwpImpact ? gwpImpact.value : 0;
+    }
+
+    // 輔助函式：獲取指定情境的輸入資料
+    function getPayload(scenarioSuffix) {
+        return {
+            distance: Number(document.getElementById(`dist_${scenarioSuffix}`).value),
+            factor: Number(document.getElementById(`fact_${scenarioSuffix}`).value),
+            load: Number(document.getElementById(`load_${scenarioSuffix}`).value),
+            amount: Number(document.getElementById(`amt_${scenarioSuffix}`).value)
+        };
+    }
+
+    document.getElementById('compareBtn').addEventListener('click', async function() {
+        const btn = this;
+        const resultSection = document.getElementById('resultSection');
+        const summaryBox = document.getElementById('summaryBox');
+        
+        // 1. 設定 UI 狀態
+        btn.disabled = true;
+        btn.innerHTML = '⚙️ 分析計算中...';
+        resultSection.style.display = 'none';
+
+        try {
+            // 2. 準備兩個請求的 Payload
+            const payloadA = getPayload('a');
+            const payloadB = getPayload('b');
+
+            // 3. 並行發送兩個請求 (使用 Promise.all)
+            // 這會同時發送請求，並等待兩者都完成
+            const [responseA, responseB] = await Promise.all([
+                fetch(API_URL, { 
+                    method: 'POST', 
+                    headers: { 'Content-Type': 'application/json' }, 
+                    body: JSON.stringify(payloadA) 
+                }),
+                fetch(API_URL, { 
+                    method: 'POST', 
+                    headers: { 'Content-Type': 'application/json' }, 
+                    body: JSON.stringify(payloadB) 
+                })
+            ]);
+
+            if (!responseA.ok || !responseB.ok) {
+                throw new Error('其中一個 API 請求失敗');
+            }
+
+            const dataA = await responseA.json();
+            const dataB = await responseB.json();
+
+            // 4. 提取數據
+            const valA = extractGWP100(dataA);
+            const valB = extractGWP100(dataB);
+
+            // 5. 顯示結果區域
+            resultSection.style.display = 'block';
+            
+            // --- 繪製圖表 ---
+            const ctx = document.getElementById('comparisonChart').getContext('2d');
+            // 如果舊圖表存在，先銷毀它
+            if (myChart) {
+                myChart.destroy();
+            }
+            
+            myChart = new Chart(ctx, {
+                type: 'bar', // 長條圖
+                data: {
+                    labels: ['情境 A (基準)', '情境 B (對照)'],
+                    datasets: [{
+                        label: '碳排放量 (kg CO2 eq - GWP 100)',
+                        data: [valA, valB],
+                        backgroundColor: [
+                            'rgba(46, 125, 50, 0.7)', // A 的顏色 (深綠)
+                            'rgba(52, 152, 219, 0.7)'  // B 的顏色 (藍色)
+                        ],
+                        borderColor: [
+                            'rgba(46, 125, 50, 1)',
+                            'rgba(52, 152, 219, 1)'
+                        ],
+                        borderWidth: 2,
+                        borderRadius: 8, // 圓角長條
+                        barPercentage: 0.6 // 調整長條寬度
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            title: {
+                                display: true,
+                                text: 'kg CO2 eq'
+                            },
+                            grid: {
+                                color: '#eee'
+                            }
+                        },
+                        x: {
+                            grid: {
+                                display: false
+                            }
+                        }
+                    },
+                    plugins: {
+                        legend: {
+                            display: false // 隱藏圖例，因為只有一個系列
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    return ` ${context.formattedValue} kg CO2 eq`;
+                                }
+                            }
+                        }
+                    },
+                    animation: {
+                        duration: 1500,
+                        easing: 'easeOutQuart'
+                    }
+                }
+            });
+
+            // --- 計算並顯示結論摘要 ---
+            let summaryHtml = '';
+            const diff = Math.abs(valA - valB);
+            const formattedDiff = diff.toFixed(2);
+
+            if (valA > valB) {
+                summaryHtml = `
+                    <h3>🎉 結論：情境 B 較為環保</h3>
+                    <p>相較於基準情境 A，採用情境 B 可減少</p>
+                    <div class="highlight-reduction">▼ ${formattedDiff} kg CO2 eq</div>
+                    <p>的碳排放量。</p>
+                `;
+            } else if (valB > valA) {
+                summaryHtml = `
+                    <h3>⚠️ 結論：情境 B 碳排較高</h3>
+                    <p>相較於基準情境 A，情境 B 會增加</p>
+                    <div class="highlight-increase">▲ ${formattedDiff} kg CO2 eq</div>
+                    <p>的碳排放量。建議維持情境 A。</p>
+                `;
+            } else {
+                summaryHtml = `
+                    <h3>⚖️ 結論：兩者碳排相同</h3>
+                    <p>兩個情境的計算結果沒有差異。</p>
+                `;
+            }
+            summaryBox.innerHTML = summaryHtml;
+
+            // 滾動到結果區
+            resultSection.scrollIntoView({ behavior: 'smooth' });
+
+        } catch (error) {
+            console.error('Error:', error);
+            alert('計算過程中發生錯誤，請檢查 Flask Server 是否正常運作，並確保 CORS 已啟用。');
+        } finally {
+            // 恢復按鈕狀態
+            btn.disabled = false;
+            btn.innerHTML = '🚀 開始分析比較';
+        }
+    });
+</script>
+
+</body>
+</html>

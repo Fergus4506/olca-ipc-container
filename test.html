@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>openLCA 碳排計算器</title>
+    <style>
+        :root {
+            --primary-color: #2c7744; /* 環保綠 */
+            --bg-color: #f4f7f6;
+            --text-color: #333;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            display: flex;
+            justify-content: center;
+            padding-top: 50px;
+            margin: 0;
+        }
+
+        .container {
+            background: white;
+            padding: 2rem;
+            border-radius: 12px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+            width: 100%;
+            max-width: 600px;
+        }
+
+        h2 {
+            text-align: center;
+            color: var(--primary-color);
+            margin-bottom: 1.5rem;
+        }
+
+        .form-group {
+            margin-bottom: 15px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: 600;
+        }
+
+        input {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            box-sizing: border-box; /* 確保 padding 不會撐大寬度 */
+            font-size: 16px;
+        }
+
+        button {
+            width: 100%;
+            padding: 12px;
+            background-color: var(--primary-color);
+            color: white;
+            border: none;
+            border-radius: 6px;
+            font-size: 16px;
+            cursor: pointer;
+            transition: background 0.3s;
+            margin-top: 10px;
+        }
+
+        button:hover {
+            background-color: #1e5230;
+        }
+
+        button:disabled {
+            background-color: #ccc;
+            cursor: not-allowed;
+        }
+
+        /* 結果顯示區域 */
+        #resultArea {
+            margin-top: 25px;
+            display: none; /* 預設隱藏 */
+            border-top: 2px solid #eee;
+            padding-top: 20px;
+        }
+
+        .highlight-box {
+            background-color: #e8f5e9;
+            border: 1px solid #c8e6c9;
+            padding: 15px;
+            border-radius: 8px;
+            text-align: center;
+            margin-bottom: 20px;
+        }
+
+        .highlight-value {
+            font-size: 2em;
+            font-weight: bold;
+            color: var(--primary-color);
+        }
+
+        .highlight-unit {
+            color: #666;
+            font-size: 0.9em;
+        }
+
+        /* 表格樣式 */
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.9em;
+        }
+
+        th, td {
+            padding: 10px;
+            border-bottom: 1px solid #eee;
+            text-align: left;
+        }
+
+        th {
+            background-color: #f8f9fa;
+            color: #555;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h2>🌱 openLCA 碳足跡計算</h2>
+    
+    <form id="calcForm">
+        <div class="form-group">
+            <label for="distance">運輸距離 (Distance)</label>
+            <input type="number" id="distance" value="10" required step="any">
+        </div>
+        
+        <div class="form-group">
+            <label for="factor">碳排係數 (Factor)</label>
+            <input type="number" id="factor" value="0.8" required step="any">
+        </div>
+        
+        <div class="form-group">
+            <label for="load">運輸負載量 (ton)</label>
+            <input type="number" id="load" value="5" required step="any">
+        </div>
+        
+        <div class="form-group">
+            <label for="amount">處理廚餘數量 (ton)</label>
+            <input type="number" id="amount" value="100" required step="any">
+        </div>
+
+        <button type="submit" id="submitBtn">開始計算</button>
+    </form>
+
+    <div id="resultArea">
+        <div class="highlight-box">
+            <div>總碳排放量 (GWP 100)</div>
+            <div class="highlight-value" id="mainValue">--</div>
+            <div class="highlight-unit">kg CO2 eq</div>
+        </div>
+
+        <details>
+            <summary style="cursor: pointer; color: #666;">查看詳細環境衝擊數據</summary>
+            <table id="detailsTable">
+                <thead>
+                    <tr>
+                        <th>衝擊類別 (Category)</th>
+                        <th>數值 (Value)</th>
+                        <th>單位 (Unit)</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    </tbody>
+            </table>
+        </details>
+    </div>
+</div>
+
+<script>
+    document.getElementById('calcForm').addEventListener('submit', async function(e) {
+        e.preventDefault(); // 防止表單重新整理頁面
+
+        const btn = document.getElementById('submitBtn');
+        const resultArea = document.getElementById('resultArea');
+        const tbody = document.querySelector('#detailsTable tbody');
+        
+        // 1. 鎖定按鈕並顯示載入中
+        btn.disabled = true;
+        btn.textContent = "計算中...";
+        resultArea.style.display = 'none';
+        tbody.innerHTML = ''; // 清空舊資料
+
+        // 2. 準備傳送的資料
+        const payload = {
+            distance: Number(document.getElementById('distance').value),
+            factor: Number(document.getElementById('factor').value),
+            load: Number(document.getElementById('load').value),
+            amount: Number(document.getElementById('amount').value)
+        };
+
+        try {
+            // 3. 發送 POST 請求到你的 Flask Server
+            const response = await fetch('http://localhost:5010/calculate', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(payload)
+            });
+
+            if (!response.ok) {
+                throw new Error(`Server error: ${response.status}`);
+            }
+
+            const data = await response.json();
+            
+            // 4. 處理回傳結果
+            if (data.status === 'ok' && data.impacts) {
+                let gwp100Value = 0;
+
+                // 遍歷所有 impacts
+                data.impacts.forEach(item => {
+                    // 填入表格
+                    const row = `<tr>
+                        <td>${item.category}</td>
+                        <td>${item.value.toFixed(4)}</td>
+                        <td>${item.unit}</td>
+                    </tr>`;
+                    tbody.innerHTML += row;
+
+                    // 尋找 IPCC 2021 GWP 100 作為主要顯示
+                    if (item.category.includes('GWP 100')) {
+                        gwp100Value = item.value;
+                    }
+                });
+
+                // 更新主要顯示區
+                document.getElementById('mainValue').textContent = gwp100Value.toFixed(2);
+                
+                // 顯示結果區
+                resultArea.style.display = 'block';
+            } else {
+                alert('計算失敗，回傳資料格式有誤');
+            }
+
+        } catch (error) {
+            console.error('Error:', error);
+            alert('連線失敗，請確認 Flask Server (Port 5010) 是否已啟動，並已設定 CORS。');
+        } finally {
+            // 恢復按鈕狀態
+            btn.disabled = false;
+            btn.textContent = "開始計算";
+        }
+    });
+</script>
+
+</body>
+</html>
