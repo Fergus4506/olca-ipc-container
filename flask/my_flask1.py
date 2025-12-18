@@ -65,11 +65,17 @@ def calculate_openlca(distance, factor, load, amount):
     # 取得參數
     parameters = client.get_parameters(o.ProductSystem, model.id)
 
+    #抓取輸入單位
+    mass_group_descriptor = client.find(o.UnitGroup, "Units of mass")
+    mass_group = client.get(o.UnitGroup, mass_group_descriptor.id)
+    ton_unit = next((unit for unit in mass_group.units if unit.name == 't'), None)
+
     # 建立計算設定
     setup = o.CalculationSetup(
         target=model,
         amount=amount,
         impact_method=method,
+        unit=ton_unit,
         parameters=[
             o.ParameterRedef(name=parameters[0].name, value=factor, context=parameters[0].context),
             o.ParameterRedef(name=parameters[1].name, value=load, context=parameters[1].context),
