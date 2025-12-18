@@ -159,6 +159,19 @@
 <div class="main-container">
     <h2>⚖️ 碳排情境比較分析</h2>
     <p style="text-align: center; color: #666;">輸入兩個不同情境的參數，比較其 GWP 100 (公斤二氧化碳當量) 差異。</p>
+
+    <div style="text-align:center; margin-bottom:15px;">
+        <label for="calcType" style="font-weight:600; margin-right:8px;">計算方式</label>
+        <select id="calcType">
+            <option value="Co2BYTKM">距離計算 - Co2BYTKM</option>
+            <option value="Co2BYOilKM">油耗+距離 - Co2BYOilKM</option>
+        </select>
+    </div>
+
+    <div style="text-align:center; margin-bottom:20px;">
+        <label for="amt_shared" style="font-weight:600; margin-right:8px;">廚餘處理量 (Amount)</label>
+        <input type="number" id="amt_shared" value="500" required style="width:120px; padding:6px; border-radius:4px;">
+    </div>
     
     <div class="comparison-wrapper">
         <div class="scenario-box" style="border-top: 4px solid var(--secondary-color);">
@@ -176,8 +189,11 @@
                 <input type="number" id="load_a" value="20" required>
             </div>
             <div class="form-group">
-                <label for="amt_a">數量 (Amount)</label>
-                <input type="number" id="amt_a" value="500" required>
+                <small style="color:#666;">數量由上方「共用數量」設定，將套用於兩個情境。</small>
+            </div>
+            <div class="form-group" id="oil_a_group" style="display:none;">
+                <label for="oil_a">油耗 (oilUse)</label>
+                <input type="number" id="oil_a" value="0.1" step="any">
             </div>
         </div>
 
@@ -196,8 +212,11 @@
                 <input type="number" id="load_b" value="25" required>
             </div>
             <div class="form-group">
-                <label for="amt_b">數量 (Amount)</label>
-                <input type="number" id="amt_b" value="500" required>
+                <small style="color:#666;">數量由上方「共用數量」設定。</small>
+            </div>
+            <div class="form-group" id="oil_b_group" style="display:none;">
+                <label for="oil_b">油耗 (oilUse)</label>
+                <input type="number" id="oil_b" value="0.1" step="any">
             </div>
         </div>
     </div>
@@ -216,16 +235,30 @@
 </div>
 
 <script>
-    // 定義 API URL
-    const API_URL = 'http://localhost:5010/calculate';
-    
+    // Server base URL (請確認這個 port 與你的 Flask App 一致)
+    const serverBase = 'http://localhost:5010';
+    const calcTypeEl = document.getElementById('calcType');
+    const oilAGroup = document.getElementById('oil_a_group');
+    const oilBGroup = document.getElementById('oil_b_group');
+
+    // 切換 oilUse 顯示
+    calcTypeEl.addEventListener('change', () => {
+        if (calcTypeEl.value === 'Co2BYOilKM') {
+            oilAGroup.style.display = 'block';
+            oilBGroup.style.display = 'block';
+        } else {
+            oilAGroup.style.display = 'none';
+            oilBGroup.style.display = 'none';
+        }
+    });
+
     // 用於存儲 Chart.js 實例的全域變數，以便稍後銷毀重建
     let myChart = null;
 
-    // 輔助函式：從 API 回傳資料中提取 'IPCC 2021 GWP 100' 的數值
-    function extractGWP100(data) {
+    // 輔助函式：從 API 回傳資料中提取 'IPCC 2021 GWP 20' 的數值
+    function extractGWP20(data) {
         if (!data || data.status !== 'ok' || !data.impacts) return 0;
-        const gwpImpact = data.impacts.find(item => item.category.includes('GWP 100'));
+        const gwpImpact = data.impacts.find(item => item.category.includes('IPCC 2021 GWP 20'));
         return gwpImpact ? gwpImpact.value : 0;
     }
 
@@ -235,7 +268,7 @@
             distance: Number(document.getElementById(`dist_${scenarioSuffix}`).value),
             factor: Number(document.getElementById(`fact_${scenarioSuffix}`).value),
             load: Number(document.getElementById(`load_${scenarioSuffix}`).value),
-            amount: Number(document.getElementById(`amt_${scenarioSuffix}`).value)
+            amount: Number(document.getElementById('amt_shared').value)
         };
     }
 
@@ -251,18 +284,25 @@
 
         try {
             // 2. 準備兩個請求的 Payload
+            const calcType = calcTypeEl.value;
             const payloadA = getPayload('a');
             const payloadB = getPayload('b');
 
+            if (calcType === 'Co2BYOilKM') {
+                payloadA.oilUse = Number(document.getElementById('oil_a').value);
+                payloadB.oilUse = Number(document.getElementById('oil_b').value);
+            }
+
             // 3. 並行發送兩個請求 (使用 Promise.all)
             // 這會同時發送請求，並等待兩者都完成
+            const endpoint = `${serverBase}/calculate/${calcType}`;
             const [responseA, responseB] = await Promise.all([
-                fetch(API_URL, { 
+                fetch(endpoint, { 
                     method: 'POST', 
                     headers: { 'Content-Type': 'application/json' }, 
                     body: JSON.stringify(payloadA) 
                 }),
-                fetch(API_URL, { 
+                fetch(endpoint, { 
                     method: 'POST', 
                     headers: { 'Content-Type': 'application/json' }, 
                     body: JSON.stringify(payloadB) 
@@ -276,9 +316,12 @@
             const dataA = await responseA.json();
             const dataB = await responseB.json();
 
+            console.log('情境 A API 回傳:', dataA);
+            console.log('情境 B API 回傳:', dataB);
+
             // 4. 提取數據
-            const valA = extractGWP100(dataA);
-            const valB = extractGWP100(dataB);
+            const valA = extractGWP20(dataA);
+            const valB = extractGWP20(dataB);
 
             // 5. 顯示結果區域
             resultSection.style.display = 'block';
@@ -381,7 +424,7 @@
 
         } catch (error) {
             console.error('Error:', error);
-            alert('計算過程中發生錯誤，請檢查 Flask Server 是否正常運作，並確保 CORS 已啟用。');
+            alert('計算過程中發生錯誤，請檢查 Flask Server (port 5001) 是否正常運作，並確保 CORS 已啟用。');
         } finally {
             // 恢復按鈕狀態
             btn.disabled = false;

@@ -131,6 +131,14 @@
     
     <form id="calcForm">
         <div class="form-group">
+            <label for="calcType">計算方式</label>
+            <select id="calcType">
+                <option value="Co2BYTKM">距離計算 - Co2BYTKM</option>
+                <option value="Co2BYOilKM">油耗+距離 - Co2BYOilKM</option>
+            </select>
+        </div>
+
+        <div class="form-group">
             <label for="distance">運輸距離 (Distance)</label>
             <input type="number" id="distance" value="10" required step="any">
         </div>
@@ -143,6 +151,11 @@
         <div class="form-group">
             <label for="load">運輸負載量 (ton)</label>
             <input type="number" id="load" value="5" required step="any">
+        </div>
+
+        <div class="form-group" id="oilUseGroup" style="display: none;">
+            <label for="oilUse">油耗 (oilUse)</label>
+            <input type="number" id="oilUse" value="0.1" step="any">
         </div>
         
         <div class="form-group">
@@ -178,6 +191,21 @@
 </div>
 
 <script>
+    // Server base URL (請確認這個 port 與你的 Flask App 一致)
+    const serverBase = 'http://localhost:5010';
+
+    // 切換顯示 oilUse 欄位
+    const calcTypeEl = document.getElementById('calcType');
+    const oilUseGroup = document.getElementById('oilUseGroup');
+
+    calcTypeEl.addEventListener('change', () => {
+        if (calcTypeEl.value === 'Co2BYOilKM') {
+            oilUseGroup.style.display = 'block';
+        } else {
+            oilUseGroup.style.display = 'none';
+        }
+    });
+
     document.getElementById('calcForm').addEventListener('submit', async function(e) {
         e.preventDefault(); // 防止表單重新整理頁面
 
@@ -192,6 +220,7 @@
         tbody.innerHTML = ''; // 清空舊資料
 
         // 2. 準備傳送的資料
+        const calcType = calcTypeEl.value;
         const payload = {
             distance: Number(document.getElementById('distance').value),
             factor: Number(document.getElementById('factor').value),
@@ -199,9 +228,14 @@
             amount: Number(document.getElementById('amount').value)
         };
 
+        if (calcType === 'Co2BYOilKM') {
+            payload.oilUse = Number(document.getElementById('oilUse').value);
+        }
+
         try {
             // 3. 發送 POST 請求到你的 Flask Server
-            const response = await fetch('http://localhost:5010/calculate', {
+            const endpoint = `${serverBase}/calculate/${calcType}`;
+            const response = await fetch(endpoint, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
@@ -215,6 +249,9 @@
 
             const data = await response.json();
             
+            // 顯示方法名稱
+            console.log('API used:', endpoint);
+
             // 4. 處理回傳結果
             if (data.status === 'ok' && data.impacts) {
                 let gwp100Value = 0;
@@ -224,7 +261,7 @@
                     // 填入表格
                     const row = `<tr>
                         <td>${item.category}</td>
-                        <td>${item.value.toFixed(4)}</td>
+                        <td>${Number(item.value).toFixed(4)}</td>
                         <td>${item.unit}</td>
                     </tr>`;
                     tbody.innerHTML += row;
@@ -236,7 +273,7 @@
                 });
 
                 // 更新主要顯示區
-                document.getElementById('mainValue').textContent = gwp100Value.toFixed(2);
+                document.getElementById('mainValue').textContent = Number(gwp100Value).toFixed(2);
                 
                 // 顯示結果區
                 resultArea.style.display = 'block';
@@ -246,7 +283,7 @@
 
         } catch (error) {
             console.error('Error:', error);
-            alert('連線失敗，請確認 Flask Server (Port 5010) 是否已啟動，並已設定 CORS。');
+            alert(`連線失敗，請確認 Flask Server (Port 5001) 是否已啟動，並已設定 CORS。\n詳細錯誤: ${error.message}`);
         } finally {
             // 恢復按鈕狀態
             btn.disabled = false;
