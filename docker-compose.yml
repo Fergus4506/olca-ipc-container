@@ -31,4 +31,6 @@ services:
     # 建議以 volume 掛載正在開發的 Flask 程式碼，方便修改立即生效
     volumes:
       - ./flask/my_flask1.py:/app/my_flask1.py:ro
+      - ./flask/.env:/app/.env:ro
+      - ./test_compare.html:/app/test_compare.html:ro
     restart: unless-stopped

@@ -12,6 +12,8 @@ RUN apt-get update \
 
 # 將 Flask app 複製進去（在 docker-compose 中可使用 volume 掛載以開發）
 COPY my_flask1.py ./
+# 設定環境變數
+COPY .env ./
 
 EXPOSE 5000
 CMD ["gunicorn", "-b", "0.0.0.0:5000", "my_flask1:app", "--workers", "1"]
