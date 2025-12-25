@@ -29,8 +29,10 @@ services:
       IPC_CONNECT_RETRIES: "20"
       IPC_CONNECT_DELAY: "1.0"
     # 建議以 volume 掛載正在開發的 Flask 程式碼，方便修改立即生效
+    # 為避免「將檔案掛到檔案」導致的 mount 錯誤，改用 env_file 讀取環境變數（或在生產中把 .env 包進 image）
+    env_file:
+      - ./flask/.env
     volumes:
       - ./flask/my_flask1.py:/app/my_flask1.py:ro
-      - ./flask/.env:/app/.env:ro
       - ./test_compare.html:/app/test_compare.html:ro
     restart: unless-stopped
