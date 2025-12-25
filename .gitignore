@@ -1,2 +1,3 @@
 TestPlatForm/
 .env
+flask/.env
