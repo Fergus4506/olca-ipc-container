@@ -1,0 +1,347 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>碳排放量查詢系統</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <style>
+        body { background-color: #f4f7f6; padding: 20px; font-family: "Microsoft JhengHei", sans-serif; }
+        .container-main { background: white; padding: 30px; border-radius: 15px; box-shadow: 0 10px 25px rgba(0,0,0,0.05); max-width: 1200px; margin: auto; }
+        .header-title { color: #1b4332; font-weight: bold; border-left: 6px solid #40916c; padding-left: 15px; margin-bottom: 30px; }
+        .search-panel { background-color: #f8f9fa; padding: 20px; border-radius: 10px; margin-bottom: 25px; border: 1px solid #dee2e6; }
+        .btn-query { background-color: #2d6a4f; color: white; border: none; transition: 0.3s; }
+        .btn-query:hover { background-color: #1b4332; color: white; }
+        
+        /* 卷軸模式設定 */
+        .table-scroll-container {
+            max-height: 400px; /* 超過 400px 出現卷軸 */
+            overflow-y: auto;
+            border: 1px solid #eee;
+            border-radius: 8px;
+        }
+        .table thead { position: sticky; top: 0; background-color: #d8f3dc; z-index: 1; }
+        
+        .chart-container {
+            margin-top: 40px;
+            padding: 20px;
+            background: #fff;
+            border-top: 2px dashed #dee2e6;
+        }
+    </style>
+</head>
+
+
+<body>
+
+<div class="container-main">
+    <h2 class="header-title">碳排放量查詢系統</h2>
+
+    <div class="search-panel">
+        <div class="row g-3">
+            <div class="col-md-3">
+                <label class="form-label">開始日期</label>
+                <input type="date" id="startDate" class="form-control">
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">結束日期</label>
+                <input type="date" id="endDate" class="form-control">
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">查詢地區</label>
+                <select id="locationSelect" class="form-select">
+                    <option value="">全部地區</option>
+                    <option value="route1">route1</option>
+                    <option value="route2">route2</option>
+                    <option value="route3">route3</option>
+                </select>
+            </div>
+            <div class="col-md-3 d-flex align-items-end">
+                <button id="searchBtn" class="btn btn-query w-100">查詢與分析</button>
+            </div>
+        </div>
+    </div>
+    <!--修改視窗-->
+    <div class="modal fade" id="editModal" tabindex="-1" aria-labelledby="editModalLabel" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header" style="background-color: #d8f3dc;">
+                    <h5 class="modal-title" id="editModalLabel">修改碳排放紀錄與重新計算</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="editForm">
+                        <input type="hidden" id="editId">
+                        <div class="mb-3">
+                            <label class="form-label">運輸距離 (km)</label>
+                            <input type="number" step="0.1" class="form-control" id="editDistance" required>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">燃料消耗量 (L)</label>
+                            <input type="number" step="0.1" class="form-control" id="editOilUse" required>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">貨物重量 (t)</label>
+                            <input type="number" step="0.1" class="form-control" id="editAmount" required>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">路線 (Route)</label>
+                            <select id="editRoute" class="form-select">
+                                <option value="route1">route1</option>
+                                <option value="route2">route2</option>
+                                <option value="route3">route3</option>
+                            </select>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                    <button type="button" id="saveEditBtn" class="btn btn-success">更新並重新計算</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- 等待動態圖 -->
+     <div class="modal fade" id="loadingModal" data-bs-backdrop="static" data-bs-keyboard="false" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered" style="max-width: 300px;">
+            <div class="modal-content text-center p-4">
+                <div class="d-flex justify-content-center mb-3">
+                    <div class="spinner-border text-success" role="status" style="width: 3rem; height: 3rem;">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                </div>
+                <h5 class="text-secondary">OpenLCA 計算中...</h5>
+                <p class="small text-muted mb-0">正在同步環境數據與碳足跡係數</p>
+            </div>
+        </div>
+    </div>
+    <!-- End 等待動態圖 -->
+     <div class="modal fade" id="successModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered" style="max-width: 300px;">
+            <div class="modal-content text-center p-4">
+                <div class="mb-3">
+                    <div class="rounded-circle bg-success d-flex align-items-center justify-content-center mx-auto" style="width: 60px; height: 60px;">
+                        <span style="color: white; font-size: 30px;">✓</span>
+                    </div>
+                </div>
+                <h5 class="text-success">計算完成！</h5>
+                <p class="small text-muted">OpenLCA 數據同步成功<br>圖表已更新</p>
+                <button type="button" class="btn btn-sm btn-success w-100" data-bs-dismiss="modal">確定</button>
+            </div>
+        </div>
+    </div>
+    <!-- 資料表格 -->
+    <h5 class="mb-3 text-secondary">| 數據清單</h5>
+    <div class="table-scroll-container">
+        <table class="table table-hover mb-0">
+            <thead>
+                <tr>
+                    <th>時間</th>
+                    <th>地點</th>
+                    <th>距離 (km)</th>
+                    <th>油耗 (L)</th>
+                    <th>重量 (t)</th>
+                    <th class="text-success">碳排放量 (kg CO2 eq)</th> 
+                    <th class="text-center">操作</th>
+                </tr>
+            </thead>
+            <tbody id="resultBody">
+                </tbody>
+        </table>
+    </div>
+
+    <div class="chart-container">
+        <h5 class="mb-4 text-secondary">| 趨勢分析：日期 vs 油耗累積</h5>
+        <div style="height: 300px;">
+            <canvas id="emissionChart"></canvas>
+        </div>
+    </div>
+</div>
+<script>
+    const API_URL = "http://210.240.170.187:5010/api/emissions";
+    let data = [];
+    let myChart = null;
+    let editModalInstance = null;
+    let loadingModalInstance = null;
+    let successModalInstance = null; // 新增成功視窗實例
+
+    // 初始化頁面
+    document.addEventListener('DOMContentLoaded', () => {
+        // 1. 初始化所有 Modal 實例
+        editModalInstance = new bootstrap.Modal(document.getElementById('editModal'));
+        loadingModalInstance = new bootstrap.Modal(document.getElementById('loadingModal'));
+        successModalInstance = new bootstrap.Modal(document.getElementById('successModal'));
+        
+        // 2. 綁定按鈕點擊事件
+        document.getElementById('saveEditBtn').addEventListener('click', submitEdit);
+        document.getElementById('searchBtn').addEventListener('click', fetchEmissions);
+        
+        // 3. 初始載入數據
+        fetchEmissions(); 
+    });
+
+    // 從資料庫讀取資料
+    async function fetchEmissions() {
+        const start = document.getElementById('startDate').value;
+        const end = document.getElementById('endDate').value;
+        const location = document.getElementById('locationSelect').value;
+        let queryUrl = `${API_URL}?start=${start}&end=${end}&location=${location}`;
+        
+        try {
+            const response = await fetch(queryUrl);
+            data = await response.json();
+            renderTable(data);
+            updateChart(data);
+        } catch (error) {
+            console.error("連線失敗:", error);
+        }
+    }
+
+    // 開啟編輯視窗並填入資料
+    function editItem(id) {
+        const item = data.find(d => d.id == id);
+        if (!item) return;
+
+        document.getElementById('editId').value = item.id;
+        document.getElementById('editDistance').value = item.Distance || 0;
+        document.getElementById('editOilUse').value = item.Oiluse || 0;
+        document.getElementById('editAmount').value = item.Amount || 0;
+        document.getElementById('editRoute').value = item.Route || 'route1';
+
+        editModalInstance.show();
+    }
+
+    // 送出修改
+    async function submitEdit() {
+        const id = document.getElementById('editId').value;
+        const updateData = {
+            distance: parseFloat(document.getElementById('editDistance').value),
+            oilUse: parseFloat(document.getElementById('editOilUse').value),
+            amount: parseFloat(document.getElementById('editAmount').value),
+            location: document.getElementById('editRoute').value,
+            factor: 0.8,
+            load: 5
+        };
+
+        // UI 切換：隱藏編輯窗，顯示 Loading
+        editModalInstance.hide();
+        loadingModalInstance.show();
+
+        try {
+            // 模擬計算延遲 (選用，若後端很快，可以加這個讓使用者看到動畫)
+            // await new Promise(resolve => setTimeout(resolve, 1500)); 
+
+            const response = await fetch(`${API_URL}/${id}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(updateData)
+            });
+
+            if (response.ok) {
+                await fetchEmissions(); // 重新抓取資料
+                loadingModalInstance.hide(); // 關閉 Loading
+                successModalInstance.show(); // 顯示成功介面
+            } else {
+                const err = await response.json();
+                loadingModalInstance.hide();
+                alert('修改失敗：' + (err.error || '伺服器錯誤'));
+            }
+        } catch (error) {
+            loadingModalInstance.hide();
+            console.error("更新請求錯誤:", error);
+            alert('連線伺服器失敗');
+        }
+    }
+
+    // 刪除函式
+    async function deleteItem(id) {
+        if(!confirm('確定刪除該紀錄？')) return;
+        try {
+            const response = await fetch(`${API_URL}/${id}`, { method: 'DELETE' });
+            if (response.ok) {
+                fetchEmissions();
+            }
+        } catch (error) {
+            alert('刪除失敗');
+        }
+    }
+
+    // 渲染表格
+    function renderTable(data) {
+        const tbody = document.getElementById('resultBody');
+        tbody.innerHTML = '';
+        if (!data || data.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="6" class="text-center text-danger py-4">找不到資料</td></tr>';
+            return;
+        }
+        data.forEach(item => {
+            const formattedTime = item.DataInputTime ? item.DataInputTime.replace('T', ' ').substring(0, 16) : '無時間資料';
+            const carbonValue = item.carbon_emission_value != null ? 
+                            parseFloat(item.carbon_emission_value).toFixed(4) : 
+                            '<span class="text-muted">N/A</span>';
+            tbody.innerHTML += `
+                <tr>
+                    <td>${formattedTime}</td>
+                    <td><span class="badge bg-success bg-opacity-75">${item.Route || '未知'}</span></td>
+                    <td>${item.Distance || 0}</td>
+                    <td>${item.Oiluse || 0}</td>
+                    <td>${item.Amount || 0}</td>
+                    <td class="fw-bold text-success">${carbonValue}</td>
+                    <td class="text-center">
+                        <button class="btn btn-sm btn-outline-warning me-1" onclick="editItem('${item.id}')">改</button>
+                        <button class="btn btn-sm btn-outline-danger" onclick="deleteItem('${item.id}')">刪</button>
+                    </td>
+                </tr>`;
+        });
+    }
+
+    // 更新圖表
+    function updateChart(data) {
+        const ctx = document.getElementById('emissionChart').getContext('2d');
+        // 過濾掉沒有碳排數據的資料，並按時間排序
+        const sortedData = [...data]
+            .filter(d => d.carbon_emission_value != null)
+            .sort((a, b) => new Date(a.DataInputTime) - new Date(b.DataInputTime));
+
+        const labels = sortedData.map(d => d.DataInputTime ? d.DataInputTime.substring(0, 10) : '未知');
+        const carbonEmissions = sortedData.map(d => d.carbon_emission_value);
+
+        if (myChart) myChart.destroy();
+        myChart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: '碳排放量 (kg CO2 eq)',
+                    data: carbonEmissions,
+                    borderColor: '#1b4332',
+                    backgroundColor: 'rgba(27, 67, 50, 0.1)',
+                    borderWidth: 3,
+                    fill: true,
+                    tension: 0.3,
+                    pointRadius: 4,
+                    pointBackgroundColor: '#40916c'
+                }]
+            },
+            options: { 
+                responsive: true, 
+                maintainAspectRatio: false,
+                plugins: {
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                return `排放量: ${context.parsed.y.toFixed(4)} kg CO2 eq`;
+                            }
+                        }
+                    }
+                }
+            }
+        });
+    }
+</script>
+
+</body>
+</html>

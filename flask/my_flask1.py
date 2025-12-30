@@ -1,10 +1,11 @@
-from flask import Flask, request, jsonify, send_file
+from flask import Flask, request,json, jsonify, send_file
 import os
 import time
 import olca_schema as o
 import olca_ipc as ipc
 from flask_cors import CORS 
-
+import random
+from datetime import datetime, timedelta
 # 讀取 .env（若你在專案根目錄放置 .env，會自動載入）
 try:
     from dotenv import load_dotenv
@@ -40,7 +41,7 @@ IPC_CONNECT_DELAY = float(os.getenv("IPC_CONNECT_DELAY", "2.0"))
 # 安全性建議：在本機/伺服器上透過環境變數管理憑證，不要直接把金鑰寫在原始碼中。
 # 支援讀取前端 .env 樣式的變數（REACT_APP_*），方便開發環境復用設定
 SUPABASE_URL = os.environ.get("SUPABASE_URL") or os.environ.get("REACT_APP_SUPABASE_URL", "")
-SUPABASE_KEY = os.environ.get("SUPABASE_KEY") or os.environ.get("REACT_APP_SUPABASE_ANON_KEY", "")
+SUPABASE_KEY = os.environ.get("SUPABASE_ANON_KEY") or os.environ.get("REACT_APP_SUPABASE_ANON_KEY", "")
 # print(f"Supabase URL: {SUPABASE_URL[:20]}... Key: {'set' if SUPABASE_KEY else 'not set'}")
 # 預設的 table 名稱（可由環境變數覆寫）
 SUPABASE_TABLE_IPCC = os.environ.get("SUPABASE_TABLE_IPCC", "IPCC 2021 AR6")
@@ -51,27 +52,30 @@ SUPABASE_TABLE = os.environ.get("SUPABASE_TABLE", "")  # 舊的兼容變數
 
 def create_ipc_client():
     """建立 IPC 連線，包含重試機制"""
-    # print(f"準備連線至 OpenLCA Server: {OLCA_IPC_HOST}:{OLCA_IPC_PORT}")
+    # 從環境變數讀取服務名稱與埠口 (Docker 內部通常是 olca:8080)
+    host = os.getenv("OLCA_IPC_HOST", "olca")
+    port = os.getenv("OLCA_IPC_PORT", "8080")
     
     last_exc = None
     for attempt in range(1, IPC_CONNECT_RETRIES + 1):
         try:
-            # 強制指定 host，確保在 Docker 網路內能找到對方
-            client = ipc.Client(3000)
-            client.url = f"http://olca:8080"
+            # 關鍵修正：初始化時只傳入 port (或不傳使用預設 3000)
+            c = ipc.Client(3000) 
             
-            # 測試連線是否真的通了 (送一個輕量請求)
-            # 嘗試取得一個簡單物件，如果失敗代表 server 可能還在啟動中
-            # client.get(o.ImpactMethod, IMPACT_METHOD_ID)
+            # 手動修改 URL 指向 Docker 內部的 olca 服務
+            c.url = f"http://{host}:{port}"
+            
+            # 測試連線：嘗試抓取一個 ImpactMethod 列表
+            c.get_all(o.ImpactMethod)
             
             print(f"成功連線至 OpenLCA (第 {attempt} 次嘗試)")
-            return client
+            return c
         except Exception as e:
-            print(f"連線失敗 (第 {attempt}/{IPC_CONNECT_RETRIES} 次): {e}")
+            print(f"連線嘗試 {attempt}/{IPC_CONNECT_RETRIES} 失敗: {e}")
             last_exc = e
             time.sleep(IPC_CONNECT_DELAY)
             
-    print("錯誤：無法連接到 OpenLCA Server，請檢查容器日誌。")
+    print("錯誤：無法連接到 OpenLCA Server")
     raise last_exc
 
 # 初始化 Client (注意：如果 OpenLCA 還沒好，這裡會卡住直到超時)
@@ -135,7 +139,12 @@ def save_to_supabase(inputs, impacts, extra=None):
 
     # 2) Insert into the corresponding Co2 table
     model_name = extra.get("model") if extra else None
+    #隨機假時間
+    random_route = random.choice(["route1", "route2", "route3"])
 
+    random_days = random.randint(0, 30)
+    random_seconds = random.randint(0, 86400)
+    random_time = (datetime.now() - timedelta(days=random_days, seconds=random_seconds)).isoformat()
     # Prepare payloads for the two known models
     if model_name == "廚餘處理量":
         table = SUPABASE_TABLE_CO2DISTANCE
@@ -144,7 +153,8 @@ def save_to_supabase(inputs, impacts, extra=None):
             "Coefficient": inputs.get("factor"),
             "Load": inputs.get("load"),
             "Amount": inputs.get("amount"),
-            "CarbonEmissionID": ipcc_id
+            "CarbonEmissionID": ipcc_id,
+            "DataInputTime": random_time   # 寫入隨機時間 (ISO 格式)
         }
     elif model_name == "燃料消耗碳排":
         table = SUPABASE_TABLE_CO2OILUSE
@@ -154,7 +164,9 @@ def save_to_supabase(inputs, impacts, extra=None):
             "Load": inputs.get("load"),
             "Amount": inputs.get("amount"),
             "Oiluse": inputs.get("oilUse"),
-            "CarbonEmissionID": ipcc_id
+            "CarbonEmissionID": ipcc_id,
+            "Route": random_route,         # 寫入隨機 Route
+            "DataInputTime": random_time   # 寫入隨機時間 (ISO 格式)
         }
 
     try:
@@ -163,7 +175,129 @@ def save_to_supabase(inputs, impacts, extra=None):
         print("Co2 insert exception:", e)
         return {"status": "error", "message": f"Co2 insert failed: {e}", "ipcc_id": ipcc_id}
 
+## 新查詢api
+TABLE_NAME = "Co2ByOiluse"
+@app.route('/api/emissions', methods=['GET'])
+def get_emissions():
+    try:
+        if supabase is None:
+            print("錯誤：Supabase Client 未能正確初始化，請檢查環境變數")
+            return jsonify({"error": "Supabase client is not initialized"}), 500
+        # 取得查詢參數
+        start_date = request.args.get('start')
+        end_date = request.args.get('end')
+        location = request.args.get('location') # 這是從 HTML 傳來的 'route1'
 
+        print(f"--- 收到查詢請求 ---")
+        print(f"參數: Start={start_date}, End={end_date}, Route={location}")
+
+        query = supabase.table(TABLE_NAME).select("*")
+        
+        # 1. 時間篩選 (DataInputTime 欄位正確)
+        if start_date:
+            query = query.gte("DataInputTime", start_date)
+        if end_date:
+            query = query.lte("DataInputTime", end_date)
+            
+        # 2. 關鍵修正：將 "Location" 改為 "Route"
+        if location:
+            # 這裡必須對應資料庫實際欄位名稱 "Route"
+            query = query.eq("Route", location)
+            
+        response = query.execute()
+
+        # Debug: 印出結果
+        print(f"查詢成功，回傳筆數: {len(response.data)}")
+
+        return jsonify(response.data), 200
+
+    except Exception as e:
+        # 如果發生錯誤，印出完整的錯誤訊息到終端機
+        print(f"發生 500 錯誤: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+
+
+# --- 2. 修改資料 (Create) ---
+@app.route('/api/emissions/<id>', methods=['PUT'])
+def update_emission(id):
+    try:
+        data = request.json
+        
+        # 1. 取得關聯的 CarbonEmissionID
+        old_res = supabase.table(TABLE_NAME).select("CarbonEmissionID").eq("id", id).execute()
+        if not old_res.data:
+            return jsonify({"error": "找不到資料"}), 404
+        ipcc_id = old_res.data[0].get("CarbonEmissionID")
+
+        # 2. 重新執行 LCA 計算
+        # 使用前端傳來的最新參數重新計算
+        new_impacts = get_co2_by_oil_km(
+            distance=data.get("distance"),
+            factor=data.get("factor"),
+            load=data.get("load"),
+            amount=data.get("amount"),
+            oilUse=data.get("oilUse")
+        )
+
+        # 3. 更新 IPCC 關聯表數據 (複寫碳排數值)
+        new_ipcc_values = {impact["category"]: impact["value"] for impact in new_impacts}
+        if ipcc_id:
+            supabase.table(SUPABASE_TABLE_IPCC).update(new_ipcc_values).eq("id", ipcc_id).execute()
+
+        # 4. 更新主表 (Co2ByOiluse)
+        main_payload = {
+            "Distance": data.get("distance"),
+            "Coefficient": data.get("factor"),
+            "Load": data.get("load"),
+            "Amount": data.get("amount"),
+            "Oiluse": data.get("oilUse"),
+            "Route": data.get("location")
+        }
+        supabase.table(TABLE_NAME).update(main_payload).eq("id", id).execute()
+
+        return jsonify({"message": "更新成功"}), 200
+    except Exception as e:
+        print(f"Update Error: {e}")
+        return jsonify({"error": str(e)}), 500
+    
+# --- 3. 刪除資料 (Delete) ---
+@app.route('/api/emissions/<id>', methods=['DELETE', 'OPTIONS'])
+def delete_emission(id):
+    if request.method == 'OPTIONS':
+        return '', 200
+
+    try:
+        print(f"--- 嘗試刪除 ID: {id} ---")
+        
+        # 執行刪除並捕捉完整回傳
+        main_res = supabase.table("Co2ByOiluse").delete().eq("id", id).execute()
+
+        # 1. 檢查是否有資料庫層級的錯誤 (例如：RLS 違規、連線中斷)
+        # 注意：某些版本的 supabase-py 如果有錯會直接拋出異常，
+        # 但有些版本會回傳在 error 屬性中。
+        if hasattr(main_res, 'error') and main_res.error:
+            print(f"Supabase 資料庫錯誤詳情: {main_res.error}")
+            return jsonify({
+                "error": "資料庫拒絕刪除",
+                "details": str(main_res.error)
+            }), 403
+
+        # 2. 檢查受影響的資料筆數
+        if len(main_res.data) == 0:
+            # 這種情況通常是：ID 不存在，或者 RLS 判定你不准刪除這筆資料 (但沒噴 Error)
+            print(f"警告：刪除指令執行完畢，但資料庫中 ID {id} 依然存在或未找到。")
+            return jsonify({
+                "error": "刪除失敗",
+                "reason": "找不到該 ID 或 RLS 權限不足（請檢查 Supabase Policy）"
+            }), 400
+
+        print(f"成功刪除 ID: {id}")
+        return jsonify({"message": "刪除成功", "deleted_item": main_res.data}), 200
+
+    except Exception as e:
+        # 捕捉程式碼層級的崩潰
+        print(f"程式執行異常: {str(e)}")
+        return jsonify({"error": "伺服器內部錯誤", "details": str(e)}), 500
 
 
 # 將原本的計算流程封裝成函式
@@ -345,4 +479,4 @@ def calculate_oil():
 
 if __name__ == "__main__":
     # debug=True 會啟用自動重新載入 (code change 後自動重啟)
-    app.run(host="0.0.0.0", port=5000, debug=True)
+    app.run(host="0.0.0.0", port=5010, debug=True)

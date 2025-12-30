@@ -3,7 +3,7 @@
 
 async function run() {
     // 定義第一個請求 (Project) - 尚未發送，只是 Promise
-    const reqProject = fetch("http://localhost:3000", {
+    const reqProject = fetch("http://210.240.170.187:5011", {
         method: "POST",
         body: JSON.stringify({
             jsonrpc: "2.0",
@@ -14,7 +14,7 @@ async function run() {
     });
 
     // 定義第二個請求 (ProductSystem)
-    const reqSystem = fetch("http://localhost:3000", {
+    const reqSystem = fetch("http://210.240.170.187:5011", {
         method: "POST",
         body: JSON.stringify({
             jsonrpc: "2.0",

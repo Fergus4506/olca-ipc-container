@@ -8,11 +8,14 @@ services:
     # 把整個 TestPlatForm 掛到 /app/data，容器內會看到 /app/data/databases/mainTestDatabase
     volumes:
       - ./TestPlatForm:/app/data
+      
     # 對外將容器的 8080 對應到主機 5011（與原始 run 範例一致）
     ports:
       - "5011:8080"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     # 建議自動重啟，並指定要啟用的資料庫（與指令範例一致）
-    command: -db mainTestDatabase
+    command: -db newTestDatabase
     restart: unless-stopped
 
   flask:

@@ -424,7 +424,7 @@
 
         } catch (error) {
             console.error('Error:', error);
-            alert('計算過程中發生錯誤，請檢查 Flask Server (port 5001) 是否正常運作，並確保 CORS 已啟用。');
+            alert(error.message || '發生錯誤，請稍後再試。');
         } finally {
             // 恢復按鈕狀態
             btn.disabled = false;

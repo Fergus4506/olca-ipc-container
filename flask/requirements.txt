@@ -3,3 +3,4 @@ gunicorn
 olca-ipc
 olca-schema
 flask-cors
+supabase
